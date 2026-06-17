@@ -1068,45 +1068,64 @@
   window.addEventListener('pagehide',()=>{ if(locWatchId!==null) stopLocationWatch(); });
 
   // ── MEMBER SCREEN ──
-  async function showMember(){
-    show('sMember');
-    set('memNavUnit',CU.unit); set('memNavName',CU.name);
-    set('memHeroName','Hi, '+CU.name.split(' ')[0]+'!');
-    set('memHeroUnit',CU.unit); set('memUnitBadge',CU.unit);
-    setLoading(false); updateLocUI(false);
-    loadMemberAttendance();
-  }
+async function showMember(){
+  show('sMember');
+  set('memNavUnit', CU.unit);
+  set('memNavName', CU.name);
+  set('memHeroName', 'Hi, '+CU.name.split(' ')[0]+'!');
+  set('memHeroUnit', CU.unit);
+  set('memUnitBadge', CU.unitType ? CU.unitType+' · '+CU.unit : CU.unit);
+  setLoading(false);
+  updateLocUI(false);
+  set('memAttHistory','<div class="empty">Loading your attendance…</div>');
+  await loadMemberAttendance();
+}
 
-  async function loadMemberAttendance(){
-    try{
-      const snap=await getDocs(query(collection(db,'records'),where('unit','==',CU.unit),orderBy('date','desc')));
-      const records=snap.docs.map(d=>({...d.data(),id:d.id}));
-      window._memberRecords = records;
-      buildYearTabs(records,'memberYearTabs',memberYearFilter,`function(y){ window._memberYearSel(y); }`);
-      window._memberYearSel = function(y){ memberYearFilter=y; renderMemberAttendance(records); };
-      renderMemberAttendance(records);
-    }catch(e){console.error(e);}
+ async function loadMemberAttendance(){
+  try{
+    // Fetch without orderBy to avoid composite index requirement
+    const snap = await getDocs(query(collection(db,'records'), where('unit','==',CU.unit)));
+    const records = snap.docs
+      .map(d=>({...d.data(), id:d.id}))
+      .sort((a,b)=>b.date.localeCompare(a.date)); // sort client-side
+    window._memberRecords = records;
+    buildYearTabs(records,'memberYearTabs',memberYearFilter,`function(y){ window._memberYearSel(y); }`);
+    window._memberYearSel = function(y){ memberYearFilter=y; renderMemberAttendance(records); };
+    if(!records.length){
+      set('memAttHistory','<div class="empty">No sessions have been submitted for your unit yet.</div>');
+      return;
+    }
+    renderMemberAttendance(records);
+  }catch(e){
+    console.error('loadMemberAttendance error:', e);
+    set('memAttHistory','<div class="empty">Could not load attendance. Check your internet connection.</div>');
   }
+}
 
-  function renderMemberAttendance(records){
-    console.log('CU.username:', CU.username);
-    console.log('CU.name:', CU.name);
-    console.log('Sample record presentUsernames:', records[0]?.presentUsernames);
-    console.log('Sample record presentNames:', records[0]?.presentNames);
-    // ... rest of function
-      if(!isHiddenUsername(CU.username)){
-        // Real login: match strictly by username in presentUsernames array.
-        // Also fall back to name match for old records that predate username tracking.
-        wasPresent = (r.presentUsernames && r.presentUsernames.includes(CU.username))
-                   || (!r.presentUsernames && r.presentNames && r.presentNames.includes(CU.name));
-      } else {
-        // Hidden username (no real login): can only match by name.
-        // Use fuzzy matching so minor spelling variations still resolve correctly.
-        if(r.presentNames && r.presentNames.length){
-          const nameMatches = r.presentNames.map(n=>nameSimilarity(CU.name, n));
-          wasPresent = nameMatches.some(score => score >= 0.82);
-        }
-      }
+function renderMemberAttendance(records){
+  buildYearTabs(records,'memberYearTabs',memberYearFilter,`function(y){ window._memberYearSel(y); }`);
+  const filtered = memberYearFilter==='all' ? records : records.filter(r=>getYear(r.date)==memberYearFilter);
+  if(!filtered.length){
+    set('memAttHistory','<div class="empty">No records for this period.</div>');
+    return;
+  }
+  // Debug: log the member name and first record's presentNames so you can verify match
+  console.log('Member name:', JSON.stringify(CU.name));
+  console.log('Sample presentNames:', JSON.stringify(filtered[0].presentNames));
+  const html = filtered.map(r=>{
+    const presentNames = Array.isArray(r.presentNames) ? r.presentNames : [];
+    // Trim both sides to catch invisible space mismatches
+    const wasPresent = presentNames.map(n=>n.trim()).includes(CU.name.trim());
+    return `<div class="rep-row">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--grey-5)">${svcLbl(r.service)}</div>
+        <div style="font-size:11px;color:var(--grey-3);margin-top:2px">${fmtShort(r.date)}</div>
+      </div>
+      <span class="badge ${wasPresent?'g':'r'}">${wasPresent?'✓ Present':'✗ Absent'}</span>
+    </div>`;
+  }).join('');
+  set('memAttHistory', html);
+}
 
       return `<div class="rep-row">
         <span style="font-size:12px;color:var(--grey-4)">${fmtShort(r.date)} · ${svcLbl(r.service)}</span>
