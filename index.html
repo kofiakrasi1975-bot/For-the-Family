@@ -1093,9 +1093,22 @@
     const filtered=memberYearFilter==='all'?records:records.filter(r=>getYear(r.date)==memberYearFilter);
     if(!filtered.length){set('memAttHistory','<div class="empty">No records for this period.</div>');return;}
     const html=filtered.map(r=>{
-      // Tracked by username (falls back to name match for records submitted before this update).
-      const wasPresent = (r.presentUsernames && r.presentUsernames.includes(CU.username))
-                       || (!r.presentUsernames && r.presentNames && r.presentNames.includes(CU.name));
+      let wasPresent = false;
+
+      if(!isHiddenUsername(CU.username)){
+        // Real login: match strictly by username in presentUsernames array.
+        // Also fall back to name match for old records that predate username tracking.
+        wasPresent = (r.presentUsernames && r.presentUsernames.includes(CU.username))
+                   || (!r.presentUsernames && r.presentNames && r.presentNames.includes(CU.name));
+      } else {
+        // Hidden username (no real login): can only match by name.
+        // Use fuzzy matching so minor spelling variations still resolve correctly.
+        if(r.presentNames && r.presentNames.length){
+          const nameMatches = r.presentNames.map(n=>nameSimilarity(CU.name, n));
+          wasPresent = nameMatches.some(score => score >= 0.82);
+        }
+      }
+
       return `<div class="rep-row">
         <span style="font-size:12px;color:var(--grey-4)">${fmtShort(r.date)} · ${svcLbl(r.service)}</span>
         <span class="badge ${wasPresent?'g':'r'}">${wasPresent?'Present':'Absent'}</span>
