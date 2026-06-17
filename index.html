@@ -1089,12 +1089,11 @@
   }
 
   function renderMemberAttendance(records){
-    buildYearTabs(records,'memberYearTabs',memberYearFilter,`function(y){ window._memberYearSel(y); }`);
-    const filtered=memberYearFilter==='all'?records:records.filter(r=>getYear(r.date)==memberYearFilter);
-    if(!filtered.length){set('memAttHistory','<div class="empty">No records for this period.</div>');return;}
-    const html=filtered.map(r=>{
-      let wasPresent = false;
-
+    console.log('CU.username:', CU.username);
+    console.log('CU.name:', CU.name);
+    console.log('Sample record presentUsernames:', records[0]?.presentUsernames);
+    console.log('Sample record presentNames:', records[0]?.presentNames);
+    // ... rest of function
       if(!isHiddenUsername(CU.username)){
         // Real login: match strictly by username in presentUsernames array.
         // Also fall back to name match for old records that predate username tracking.
